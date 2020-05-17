@@ -27,7 +27,7 @@ function MqttBlindsTasmotaAccessory(log, config) {
     // Tasmota vars
     this.mqttTopic = config["mqttTopic"];
     this.mqttShutterIndex = config["mqttShutterIndex"] || "1";
-    this.mqttResultTopic = config["mqttResultTopic"] || 'tele/' + this.mqttTopic + '/RESULT';
+    this.mqttResultTopic = config["mqttResultTopic"] || 'stat/' + this.mqttTopic + '/RESULT';
     this.mqttCommandTopic = config["mqttCommandTopic"] || 'cmnd/' + this.mqttTopic + '/ShutterPosition' + this.mqttShutterIndex;
     this.mqttShutterName = config["mqttShutterName"]  || "Shutter" + this.mqttShutterIndex
 
@@ -77,7 +77,7 @@ function MqttBlindsTasmotaAccessory(log, config) {
             that.service.getCharacteristic(Characteristic.CurrentPosition).updateValue(that.lastPosition);
             that.log("Updated CurrentPosition: %s", that.lastPosition);
             // map the position state (open = 0 = DECREASING, close = 1 = INCREASING, stop = 2 = STOPPED)
-            var direction = parseInt(message[that.mqttShutterName]["direction"]);
+            var direction = parseInt(message[that.mqttShutterName]["Direction"]);
             switch(direction) {
               case -1:
                 that.currentPositionState = 0
