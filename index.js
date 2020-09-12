@@ -29,7 +29,8 @@ function MqttBlindsTasmotaAccessory(log, config) {
 	this.mqttShutterIndex = config["mqttShutterIndex"] || "1";
 	this.mqttResultTopic = config["mqttResultTopic"] || 'stat/' + this.mqttTopic + '/RESULT';
 	this.mqttCommandTopic = config["mqttCommandTopic"] || 'cmnd/' + this.mqttTopic + '/ShutterPosition' + this.mqttShutterIndex;
-	this.mqttShutterName = config["mqttShutterName"]  || "Shutter" + this.mqttShutterIndex
+	this.mqttTeleTopic = config["mqttTeleTopic"] || 'tele/' + this.mqttTopic + '/SENSOR';
+	this.mqttShutterName = config["mqttShutterName"]  || "Shutter" + this.mqttShutterIndex;
 
 	// MQTT options
 	this.mqttOptions = {
@@ -40,21 +41,15 @@ function MqttBlindsTasmotaAccessory(log, config) {
 		clean: true,
 		reconnectPeriod: 1000,
 		connectTimeout: 30 * 1000,
-		will: {
-			topic: 'WillMsg',
-			payload: 'Connection Closed abnormally..!',
-			qos: 0,
-			retain: false
-		},
 		username: this.mqttUsername,
 		password: this.mqttPassword,
 		rejectUnauthorized: false
 	};
 
 	// STATE vars
-	this.lastPosition = 100; // last known position of the blinds, open by default
+	this.lastPosition = 100; // last known position of the blinds (open)
 	this.currentPositionState = 2; // stopped by default
-	this.currentTargetPosition = 100; // open by default
+	this.currentTargetPosition = this.lastPosition; // same as last known position
 
 	// MQTT handling
 	this.mqttClient = mqtt.connect(this.mqttUrl, this.mqttOptions);
@@ -68,44 +63,56 @@ function MqttBlindsTasmotaAccessory(log, config) {
 	});
 
 	this.mqttClient.on('message', function(topic, message) {
+
+		// this callback can be called from both the STAT topic and the TELE topic
+		// JSON format is nearly the same, eg:
+		//  - TELE : {"Time":"2020-09-12T13:55:32","Shutter1":{"Position":0,"Direction":0,"Target":0},"Shutter2":{"Position":0,"Direction":0,"Target":0}}
+		//  - STAT : {"Shutter2":{"Position":100,"Direction":0,"Target":100}}
 		message = JSON.parse(message.toString('utf-8'));
 		if (message.hasOwnProperty(that.mqttShutterName)) {
 
-		// update CurrentPosition
-		that.lastPosition = parseInt(message[that.mqttShutterName]["Position"]);
-		that.service.getCharacteristic(Characteristic.CurrentPosition).updateValue(that.lastPosition);
-		that.log("Updated CurrentPosition: %s", that.lastPosition);
+			if (message[that.mqttShutterName].hasOwnProperty('Position')) {
+				// update CurrentPosition
+				that.lastPosition = parseInt(message[that.mqttShutterName]["Position"]);
+				that.service.getCharacteristic(Characteristic.CurrentPosition).updateValue(that.lastPosition);
+				that.log("Updated CurrentPosition: %s", that.lastPosition);
+			}
 
-		// update PositionState (open = 0 = DECREASING, close = 1 = INCREASING, stop = 2 = STOPPED)
-		switch(parseInt(message[that.mqttShutterName]["Direction"])) {
-			case -1:
-			that.currentPositionState = 0
-			that.service.getCharacteristic(Characteristic.PositionState).updateValue(that.currentPositionState);
-			that.log("Updated PositionState: %s", that.currentPositionState);
-			break
-			case 1:
-			that.currentPositionState = 1
-			that.service.getCharacteristic(Characteristic.PositionState).updateValue(that.currentPositionState);
-			that.log("Updated PositionState: %s", that.currentPositionState);
-			break
-			case 0:
-			that.currentPositionState = 2
-			that.service.getCharacteristic(Characteristic.PositionState).updateValue(that.currentPositionState);
-			that.log("Updated PositionState: %s", that.currentPositionState);
-			break
-			default:
-			that.log("Unknown direction: %s", direction);
-		}
+			if (message[that.mqttShutterName].hasOwnProperty('Direction')) {
+				// update PositionState (open = 0 = DECREASING, close = 1 = INCREASING, stop = 2 = STOPPED)
+				switch(parseInt(message[that.mqttShutterName]["Direction"])) {
+					case -1:
+						that.currentPositionState = 0
+						that.service.getCharacteristic(Characteristic.PositionState).updateValue(that.currentPositionState);
+						that.log("Updated PositionState: %s", that.currentPositionState);
+						break
+					case 1:
+						that.currentPositionState = 1
+						that.service.getCharacteristic(Characteristic.PositionState).updateValue(that.currentPositionState);
+						that.log("Updated PositionState: %s", that.currentPositionState);
+						break
+					case 0:
+						that.currentPositionState = 2
+						that.service.getCharacteristic(Characteristic.PositionState).updateValue(that.currentPositionState);
+						that.log("Updated PositionState: %s", that.currentPositionState);
+						break
+					default:
+						that.log("Unknown direction: %s", direction);
+				}
+			}
 
-		// update TargetPosition
-		that.currentTargetPosition = parseInt(message[that.mqttShutterName]["Target"])
-		that.service.getCharacteristic(Characteristic.TargetPosition).updateValue(that.currentTargetPosition);
-		that.log("Updated TargetPosition: %s", that.currentTargetPosition);
+			if (message[that.mqttShutterName].hasOwnProperty('Target')) {
+				// update TargetPosition
+				that.currentTargetPosition = parseInt(message[that.mqttShutterName]["Target"])
+				that.service.getCharacteristic(Characteristic.TargetPosition).updateValue(that.currentTargetPosition);
+				that.log("Updated TargetPosition: %s", that.currentTargetPosition);
+			}
 		}
 	});
 
 	// MQTT subscribed
 	this.mqttClient.subscribe(that.mqttResultTopic);
+	this.mqttClient.subscribe(that.mqttTeleTopic);
 
 	// register the service and provide the functions
 	this.service = new Service.WindowCovering(this.name);
@@ -125,8 +132,14 @@ function MqttBlindsTasmotaAccessory(log, config) {
 		.getCharacteristic(Characteristic.TargetPosition)
 		.on('get', this.getTargetPosition.bind(this))
 		.on('set', this.setTargetPosition.bind(this));
+
+	// send an empty MQTT command to get the initial state
+	this.mqttClient.publish(this.mqttCommandTopic, null, this.mqttOptions);
+
 }
 
+
+// Apple homekit handlers
 MqttBlindsTasmotaAccessory.prototype.getCurrentPosition = function(callback) {
 	this.log("Requested CurrentPosition: %s", this.lastPosition);
 	callback(null, this.lastPosition);
