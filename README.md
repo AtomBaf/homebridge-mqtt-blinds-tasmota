@@ -61,7 +61,7 @@ Use these variables to override the computed topics (mqttTopic + mqttShutterInde
 
 | Variable | Description | Example | Default Value
 | --- | --- | --- | --- |
-| mqttResultTopic | Topic to get position from 0 to 100. | /stat/my_blind/RESULT | /stat/{mqttTopic}/RESULT |
-| mqttCommandTopic | Topic to set position from 0 to 100. | /cmnd/my_blind/ShutterPosition1 | /cmnd/{mqttTopic}/ShutterPosition{mqttShutterIndex} |
-| mqttTeleTopic | Telemetry topic position from 0 to 100. | /tele/my_blind/ShutterPosition1 | /tele/{mqttTopic}/ShutterPosition{mqttShutterIndex} |
 | mqttShutterName | Shutter name as seen in tasmota. | Shutter1 | Shutter{mqttShutterIndex} |
+| mqttTeleTopic | Telemetry topic position from 0 to 100. | /tele/my_blind/SENSOR | /tele/{mqttTopic}/SENSOR |
+| mqttCommandTopic | Topic to set position from 0 to 100. | /cmnd/my_blind/ShutterPosition1 | /cmnd/{mqttTopic}/ShutterPosition{mqttShutterIndex} |
+| mqttResultTopic | Topic to get position from 0 to 100. | /stat/my_blind/RESULT | /stat/{mqttTopic}/RESULT |
